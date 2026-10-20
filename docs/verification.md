@@ -13,7 +13,7 @@ OK (skipped=5)
 
 51 项通过，5 项跳过。跳过项为 PostgreSQL 上的并发轮换准备、并发改密执行、并发每日快照，以及真实新旧密码认证、远端成功后本地失败恢复。它们需要 PostgreSQL 管理库和开启密码认证的目标库。
 
-基础测试使用 SQLite 隔离测试库。涉及目标改密的基础测试使用受控替身；这些结果不能证明真实 PostgreSQL 改密和行锁已联调通过。当前环境没有 Docker，且不具备启动本地 PostgreSQL 所需的非 root 运行用户，因此本次没有执行这 5 项集成测试。
+基础测试使用 SQLite 隔离测试库。涉及目标改密的基础测试使用受控替身；这些结果不能证明真实 PostgreSQL 改密和行锁已联调通过。本地环境未执行这 5 项集成测试；后续已在 GitHub Actions 的 PostgreSQL 环境完成验证，结果见下文。
 
 核心模块按 `pyproject.toml` 的统计口径，语句覆盖率为 93%；不包含迁移、管理命令、后台和测试代码。这是基础测试覆盖率，不是生产环境可靠性指标。
 
@@ -45,4 +45,22 @@ OK (skipped=5)
 - Compose 与 GitHub Actions 配置：YAML 解析、关键配置检查通过。
 - `sh -n docker/init-target.sh`：通过。
 
-Docker 镜像构建、完整 Compose 启动、Redis 与 Celery 的跨进程调度，以及远端 GitHub Actions 均未在当前环境实际运行。仓库中提供相应配置和运行步骤，需在可运行 Docker 的环境完成这些验证后再对外提交。
+Docker 镜像构建、完整 Compose 启动，以及 Redis 与 Celery 的跨进程调度尚未作为完整端到端流程验证。GitHub Actions 已完成代码检查和 PostgreSQL 集成测试，详见下文。
+
+
+## GitHub Actions 验证（2026-10-20）
+
+已在 GitHub 托管运行器和 PostgreSQL 16 服务上完成自动验证：
+
+```text
+Ran 56 tests in 2.035s
+OK (skipped=1)
+```
+
+55 项通过，1 项跳过。跳过的是仅针对 SQLite 的轮换保护用例，因为本轮管理库为 PostgreSQL。
+
+此前未实跑的 5 项集成测试均已通过：并发轮换准备、并发改密执行、并发每日快照、真实新旧密码认证，以及远端改密成功后本地写入失败的恢复。
+
+Ruff 检查、格式检查、迁移完整性和静态文件采集也均通过。核心模块按原统计口径，语句覆盖率为 94%。这些结果不替代完整 Compose 环境的端到端验证。
+
+[查看本次成功的 GitHub Actions 运行记录](https://github.com/xuelifang1-ui/answer-question/actions/runs/39403617174)
