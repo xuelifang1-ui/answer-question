@@ -1,0 +1,14 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 110
+exclude = ["inventory/migrations"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.coverage.run]
+source = ["inventory"]
+omit = ["*/migrations/*", "*/tests/*", "*/management/*", "*/admin.py"]
+
+[tool.coverage.report]
+show_missing = true

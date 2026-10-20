@@ -1,0 +1,100 @@
+x-app: &app
+  build: .
+  environment:
+    DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Run scripts/init_env.py first}
+    FERNET_KEY: ${FERNET_KEY:?Run scripts/init_env.py first}
+    DJANGO_DEBUG: "false"
+    DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+    DB_ENGINE: postgresql
+    DB_NAME: ${DB_NAME:-instance_manager}
+    DB_USER: ${DB_USER:-manager}
+    DB_PASSWORD: ${DB_PASSWORD:?Run scripts/init_env.py first}
+    DB_HOST: db
+    DB_PORT: "5432"
+    CELERY_BROKER_URL: redis://redis:6379/0
+    TARGET_ALLOWED_CIDRS: ${TARGET_ALLOWED_CIDRS:-172.30.66.0/24}
+    TARGET_SSLMODE: ${TARGET_SSLMODE:-prefer}
+    DEMO_TARGET_IP: ${DEMO_TARGET_IP:-172.30.66.10}
+    DEMO_APP_PASSWORD: ${DEMO_APP_PASSWORD:?Run scripts/init_env.py first}
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${DB_NAME:-instance_manager}
+      POSTGRES_USER: ${DB_USER:-manager}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Run scripts/init_env.py first}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  web:
+    <<: *app
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  worker:
+    <<: *app
+    command: ["celery", "-A", "config", "worker", "--loglevel=info", "--concurrency=2"]
+
+  beat:
+    <<: *app
+    command: ["celery", "-A", "config", "beat", "--loglevel=info", "--schedule=/app/run/celerybeat-schedule"]
+    volumes:
+      - beat_data:/app/run
+
+  target-db:
+    image: postgres:16
+    profiles: ["demo"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DEMO_ADMIN_PASSWORD:?Run scripts/init_env.py first}
+      DEMO_APP_PASSWORD: ${DEMO_APP_PASSWORD:?Run scripts/init_env.py first}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    volumes:
+      - target_data:/var/lib/postgresql/data
+      - ./docker/init-target.sh:/docker-entrypoint-initdb.d/init-target.sh:ro
+    networks:
+      default:
+        ipv4_address: ${DEMO_TARGET_IP:-172.30.66.10}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${DEMO_SUBNET:-172.30.66.0/24}
+
+volumes:
+  db_data:
+  redis_data:
+  beat_data:
+  target_data:
